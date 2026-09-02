@@ -4,6 +4,7 @@ import type {
   NativeQuery,
   QueryResult,
 } from '../data-sources/data-source.types.js';
+import type { OpenAiConfiguration } from './openai-configuration.js';
 
 export const AI_QUERY_PROVIDER = Symbol('AI_QUERY_PROVIDER');
 export const ASK_CONFIGURATION = Symbol('ASK_CONFIGURATION');
@@ -44,10 +45,7 @@ export interface AskConfiguration {
   maxSources: number;
   maxSummaryRowsPerExecution: number;
   maxSummaryContentChars: number;
-  openAi?: {
-    apiKey: string;
-    model: string;
-  };
+  openAi?: OpenAiConfiguration;
 }
 
 export type AskSourceOutcome =

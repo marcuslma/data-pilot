@@ -31,6 +31,7 @@ import { UnconfiguredAiQueryProvider } from './unconfigured-ai-query.provider.js
         return new OpenAiQueryProvider(
           new OpenAI({ apiKey: configuration.openAi.apiKey }),
           configuration.openAi.model,
+          configuration.openAi.reasoningEffort,
         );
       },
       inject: [ASK_CONFIGURATION],

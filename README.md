@@ -145,15 +145,22 @@ uses OpenAI to create at most one read-only query per supplied source. The
 application inspects the catalog first and reuses the PostgreSQL and MongoDB
 query validation performed by `/query` before executing anything.
 
-Set both OpenAI variables before calling the endpoint. `OPENAI_API_KEY` and
-`OPENAI_MODEL` must be supplied through the process environment; when either
-is unavailable, `/ask` responds with `503 Service Unavailable`. OpenAI
-requests can incur usage charges.
+Set `OPENAI_API_KEY` before calling the endpoint. `OPENAI_MODEL` is optional
+and defaults to `gpt-5-nano`; `/ask` responds with `503 Service Unavailable`
+only when the API key is unavailable. `OPENAI_REASONING_EFFORT` is optional and
+defaults to `medium`. OpenAI requests can incur usage charges.
 
 ```bash
 export OPENAI_API_KEY='your-api-key'
-export OPENAI_MODEL='your-model'
+export OPENAI_MODEL='gpt-5-nano'
+export OPENAI_REASONING_EFFORT='medium'
 ```
+
+`OPENAI_MODEL` accepts `gpt-5-nano`, `gpt-5.6-luna`, `gpt-5.6-terra`, or
+`gpt-5.6-sol`; it defaults to `gpt-5-nano` when omitted.
+
+`OPENAI_REASONING_EFFORT` accepts `none`, `low`, `medium`, `high`, `xhigh`,
+or `max`; it defaults to `medium` when omitted.
 
 The provider receives only opaque source IDs, source types, and catalog
 metadata. It never receives database connection URLs or credentials. The

@@ -18,7 +18,8 @@ describe('OpenAiQueryProvider', () => {
     }));
     const provider = new OpenAiQueryProvider(
       { responses: { create } } as never,
-      'test-model',
+      'gpt-5-nano',
+      'high',
     );
 
     await expect(
@@ -44,7 +45,8 @@ describe('OpenAiQueryProvider', () => {
 
     expect(create).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: 'test-model',
+        model: 'gpt-5-nano',
+        reasoning: { effort: 'high' },
         store: false,
         text: expect.objectContaining({
           format: expect.objectContaining({
@@ -62,7 +64,8 @@ describe('OpenAiQueryProvider', () => {
     }));
     const provider = new OpenAiQueryProvider(
       { responses: { create } } as never,
-      'test-model',
+      'gpt-5-nano',
+      'medium',
     );
 
     await expect(
@@ -79,6 +82,14 @@ describe('OpenAiQueryProvider', () => {
         ],
       }),
     ).resolves.toBe('Há 151 Pokémon em Kanto.');
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gpt-5-nano',
+        reasoning: { effort: 'medium' },
+        store: false,
+      }),
+    );
   });
 
   it('forbids planned queries when no catalog is supplied', async () => {
@@ -90,7 +101,8 @@ describe('OpenAiQueryProvider', () => {
     }));
     const provider = new OpenAiQueryProvider(
       { responses: { create } } as never,
-      'test-model',
+      'gpt-5-nano',
+      'medium',
     );
 
     await provider.plan({ question: 'teste', sources: [] });
@@ -116,7 +128,8 @@ describe('OpenAiQueryProvider', () => {
     });
     const provider = new OpenAiQueryProvider(
       { responses: { create } } as never,
-      'test-model',
+      'gpt-5-nano',
+      'medium',
     );
 
     const operation = provider.plan({ question: 'teste', sources: [] });

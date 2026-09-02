@@ -6,6 +6,10 @@ import type {
   QueryPlan,
   SummaryExecution,
 } from './ai-query.types.js';
+import type {
+  OpenAiModel,
+  OpenAiReasoningEffort,
+} from './openai-configuration.js';
 
 const INVALID_RESPONSE = 'AI provider returned an invalid response.';
 const REQUEST_FAILED = 'AI provider request failed.';
@@ -34,7 +38,8 @@ type OpenAiResponsesClient = Pick<OpenAI, 'responses'>;
 export class OpenAiQueryProvider implements AiQueryProvider {
   constructor(
     private readonly client: OpenAiResponsesClient,
-    private readonly model: string,
+    private readonly model: OpenAiModel,
+    private readonly reasoningEffort: OpenAiReasoningEffort,
   ) {}
 
   async plan(input: {
@@ -96,6 +101,7 @@ export class OpenAiQueryProvider implements AiQueryProvider {
     try {
       const response = await this.client.responses.create({
         model: this.model,
+        reasoning: { effort: this.reasoningEffort },
         store: false,
         instructions,
         input: JSON.stringify(input),
