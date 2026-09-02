@@ -4,6 +4,8 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { DataSourceRegistry } from './data-source.registry.js';
+import { assertSafeMongoQuery } from './mongo-query-validation.js';
+import { hasMultipleSqlStatements } from './sql-statement.js';
 import type {
   DataSourceCatalog,
   DataSourceKind,
@@ -25,7 +27,7 @@ export class DataSourceService {
   constructor(private readonly registry: DataSourceRegistry) {}
 
   async inspect(source: SourceDto): Promise<DataSourceCatalog> {
-    const definition = this.parseSource(source);
+    const definition = this.validateSource(source);
 
     try {
       return await this.registry.get(definition.kind).inspect(definition);
@@ -35,8 +37,8 @@ export class DataSourceService {
   }
 
   async execute(source: SourceDto, query: object): Promise<QueryResult> {
-    const definition = this.parseSource(source);
-    const nativeQuery = this.parseQuery(definition.kind, query);
+    const definition = this.validateSource(source);
+    const nativeQuery = this.validateNativeQuery(definition.kind, query);
 
     try {
       return await this.registry
@@ -45,6 +47,27 @@ export class DataSourceService {
     } catch (error) {
       this.rethrowAccessError(error, definition.kind);
     }
+  }
+
+  validateNativeQuery(kind: DataSourceKind, query: object): NativeQuery {
+    const nativeQuery = this.parseQuery(kind, query);
+
+    if (nativeQuery.language === 'sql') {
+      if (hasMultipleSqlStatements(nativeQuery.text)) {
+        throw new BadRequestException('Invalid SQL statement.');
+      }
+    } else {
+      assertSafeMongoQuery(nativeQuery.filter);
+      assertSafeMongoQuery(nativeQuery.projection);
+      assertSafeMongoQuery(nativeQuery.sort);
+      assertSafeMongoQuery(nativeQuery.pipeline);
+    }
+
+    return nativeQuery;
+  }
+
+  validateSource(source: SourceDto): SourceDefinition {
+    return this.parseSource(source);
   }
 
   private rethrowAccessError(

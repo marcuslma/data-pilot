@@ -137,6 +137,44 @@ curl -X POST "${API_BASE_URL}/query" \
   -d '{"source":{"kind":"mongodb","connectionUrl":"'"${MONGODB_CONNECTION_URL}"'"},"query":{"language":"mongo","operation":"find","collection":"planets","filter":{"episodes":"V"},"sort":{"name":1}}}'
 ```
 
+## AI-assisted query API
+
+`POST /ask` is available only when `NODE_ENV` is exactly `development` or
+`test`. It accepts temporary sources, does not persist sources or results, and
+uses OpenAI to create at most one read-only query per supplied source. The
+application inspects the catalog first and reuses the PostgreSQL and MongoDB
+query validation performed by `/query` before executing anything.
+
+Set both OpenAI variables before calling the endpoint. `OPENAI_API_KEY` and
+`OPENAI_MODEL` must be supplied through the process environment; when either
+is unavailable, `/ask` responds with `503 Service Unavailable`. OpenAI
+requests can incur usage charges.
+
+```bash
+export OPENAI_API_KEY='your-api-key'
+export OPENAI_MODEL='your-model'
+```
+
+The provider receives only opaque source IDs, source types, and catalog
+metadata. It never receives database connection URLs or credentials. The
+response contains a Portuguese answer plus the executed queries and their raw
+results for auditability. If one source cannot be accessed, a successful query
+from another source can still produce a partial answer.
+
+The endpoint limits the request to `MAX_ASK_SOURCES` sources (default `10`).
+For the answer synthesis only, it sends at most
+`MAX_ASK_SUMMARY_ROWS_PER_EXECUTION` rows per successful query (default `100`)
+and at most `MAX_ASK_SUMMARY_CONTENT_CHARS` serialized characters across all
+queries (default `50000`). Full adapter results remain in the API response; a
+`truncatedForSummary` field identifies a result that was reduced before being
+sent to the provider.
+
+```bash
+curl -X POST "${API_BASE_URL}/ask" \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"Quantos Pokémon existem em Kanto?","sources":[{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"}]}'
+```
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
