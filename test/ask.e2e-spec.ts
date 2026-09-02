@@ -1,4 +1,7 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import {
+  INestApplication,
+  StandardSchemaValidationPipe,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
@@ -61,13 +64,7 @@ describe('AI query endpoint (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
 
@@ -132,7 +129,7 @@ describe('AI query endpoint (e2e)', () => {
   });
 
   it('rejects a source URL that does not match its source kind before inspection', async () => {
-    await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post('/ask')
       .send({
         question: 'teste',
@@ -140,12 +137,11 @@ describe('AI query endpoint (e2e)', () => {
           { kind: 'postgres', connectionUrl: 'mongodb://localhost/starwars' },
         ],
       })
-      .expect(400)
-      .expect((response) => {
-        expect(response.body.message).toBe(
-          'Connection URL does not match the source kind.',
-        );
-      });
+      .expect(400);
+
+    expect(JSON.stringify(response.body)).toContain(
+      'Connection URL does not match the source kind.',
+    );
 
     expect(adapter.inspect).not.toHaveBeenCalled();
   });
@@ -232,13 +228,7 @@ describe('AI query endpoint without OpenAI configuration (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
 

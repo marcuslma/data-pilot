@@ -1,4 +1,3 @@
-import type { SourceDto } from '../data-sources/dto/source.dto.js';
 import type {
   DataSourceCatalog,
   DataSourceKind,
@@ -49,11 +48,6 @@ export interface AskConfiguration {
     apiKey: string;
     model: string;
   };
-}
-
-export interface AskRequest {
-  question: string;
-  sources: SourceDto[];
 }
 
 export type AskSourceOutcome =

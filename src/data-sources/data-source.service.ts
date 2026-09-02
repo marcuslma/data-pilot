@@ -13,7 +13,7 @@ import type {
   QueryResult,
   SourceDefinition,
 } from './data-source.types.js';
-import type { SourceDto } from './dto/source.dto.js';
+import type { Source } from './data-source.schemas.js';
 
 const CONNECTION_PROTOCOLS: Record<DataSourceKind, string[]> = {
   postgres: ['postgres:', 'postgresql:'],
@@ -26,7 +26,7 @@ const INVALID_NATIVE_QUERY = 'Invalid native query.';
 export class DataSourceService {
   constructor(private readonly registry: DataSourceRegistry) {}
 
-  async inspect(source: SourceDto): Promise<DataSourceCatalog> {
+  async inspect(source: Source): Promise<DataSourceCatalog> {
     const definition = this.validateSource(source);
 
     try {
@@ -36,7 +36,7 @@ export class DataSourceService {
     }
   }
 
-  async execute(source: SourceDto, query: object): Promise<QueryResult> {
+  async execute(source: Source, query: object): Promise<QueryResult> {
     const definition = this.validateSource(source);
     const nativeQuery = this.validateNativeQuery(definition.kind, query);
 
@@ -66,7 +66,7 @@ export class DataSourceService {
     return nativeQuery;
   }
 
-  validateSource(source: SourceDto): SourceDefinition {
+  validateSource(source: Source): SourceDefinition {
     return this.parseSource(source);
   }
 
@@ -84,7 +84,7 @@ export class DataSourceService {
     throw error;
   }
 
-  private parseSource(source: SourceDto): SourceDefinition {
+  private parseSource(source: Source): SourceDefinition {
     let protocol: string;
 
     try {

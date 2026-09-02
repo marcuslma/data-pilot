@@ -5,8 +5,8 @@ import {
   Injectable,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { Source } from '../data-sources/data-source.schemas.js';
 import { DataSourceService } from '../data-sources/data-source.service.js';
-import type { SourceDto } from '../data-sources/dto/source.dto.js';
 import type {
   DataSourceCatalog,
   DataSourceKind,
@@ -18,19 +18,19 @@ import {
   ASK_CONFIGURATION,
   type AiQueryProvider,
   type AskConfiguration,
-  type AskRequest,
   type AskResponse,
   type AskSourceOutcome,
   type PlannedQuery,
   type QueryPlan,
   type SummaryExecution,
 } from './ai-query.types.js';
+import type { AskRequest } from './ask.schemas.js';
 
 const INVALID_PLAN = 'AI provider returned an invalid query plan.';
 
 interface SourceEntry {
   sourceId: string;
-  source: SourceDto;
+  source: Source;
 }
 
 interface CataloguedSource extends SourceEntry {

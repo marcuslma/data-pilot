@@ -8,7 +8,10 @@ import {
 } from '@nestjs/common';
 import { RuntimeAccessGuard } from '../data-sources/runtime-access.guard.js';
 import { AskService } from './ask.service.js';
-import { AskRequestDto } from './dto/ask-request.dto.js';
+import {
+  askRequestSchema,
+  type AskRequest,
+} from './ask.schemas.js';
 
 @Controller()
 @UseGuards(RuntimeAccessGuard)
@@ -17,7 +20,7 @@ export class AskController {
 
   @Post('ask')
   @HttpCode(HttpStatus.OK)
-  ask(@Body() body: AskRequestDto) {
+  ask(@Body({ schema: askRequestSchema }) body: AskRequest) {
     return this.askService.ask(body);
   }
 }

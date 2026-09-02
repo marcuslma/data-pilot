@@ -1,7 +1,7 @@
 import {
   INestApplication,
+  StandardSchemaValidationPipe,
   UnprocessableEntityException,
-  ValidationPipe,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -33,6 +33,8 @@ describe('Data sources (e2e)', () => {
       rows: [],
       returnedCount: 0,
     });
+    vi.mocked(adapter.inspect).mockClear();
+    vi.mocked(adapter.execute).mockClear();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -42,17 +44,11 @@ describe('Data sources (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
+    app.useGlobalPipes(new StandardSchemaValidationPipe());
     await app.init();
   });
 
-  it('rejects an unsupported source kind at the DTO boundary', async () => {
+  it('rejects an unsupported source kind at the request boundary', async () => {
     await request(app.getHttpServer())
       .post('/catalog')
       .send({
@@ -64,20 +60,16 @@ describe('Data sources (e2e)', () => {
       .expect(400);
   });
 
-  it('rejects a catalog request without a source at the DTO boundary', async () => {
+  it('rejects a catalog request without a source at the request boundary', async () => {
     const response = await request(app.getHttpServer())
       .post('/catalog')
       .send({})
       .expect(400);
 
-    expect(response.body.message).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('source should not be null or undefined'),
-      ]),
-    );
+    expect(JSON.stringify(response.body)).toContain('source');
   });
 
-  it('rejects a query request without a query object at the DTO boundary', async () => {
+  it('rejects a query request without a query object at the request boundary', async () => {
     const response = await request(app.getHttpServer())
       .post('/query')
       .send({
@@ -88,11 +80,23 @@ describe('Data sources (e2e)', () => {
       })
       .expect(400);
 
-    expect(response.body.message).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining('query must be an object'),
-      ]),
-    );
+    expect(JSON.stringify(response.body)).toContain('query');
+  });
+
+  it('rejects unexpected outer query properties before executing the adapter', async () => {
+    await request(app.getHttpServer())
+      .post('/query')
+      .send({
+        source: {
+          kind: 'postgres',
+          connectionUrl: 'postgresql://localhost/test',
+        },
+        query: { language: 'sql', text: 'SELECT 1' },
+        extra: 'not accepted',
+      })
+      .expect(400);
+
+    expect(adapter.execute).not.toHaveBeenCalled();
   });
 
   it('returns the normalized catalog from the selected adapter', async () => {
@@ -176,6 +180,22 @@ describe('Data sources (e2e)', () => {
   });
 
   it('rejects a connection protocol that does not match its source kind', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/catalog')
+      .send({
+        source: {
+          kind: 'postgres',
+          connectionUrl: 'mongodb://localhost/test',
+        },
+      })
+      .expect(400);
+
+    expect(JSON.stringify(response.body)).toContain(
+      'Connection URL does not match the source kind.',
+    );
+  });
+
+  it('rejects a mismatched source protocol before inspecting the adapter', async () => {
     await request(app.getHttpServer())
       .post('/catalog')
       .send({
@@ -184,12 +204,9 @@ describe('Data sources (e2e)', () => {
           connectionUrl: 'mongodb://localhost/test',
         },
       })
-      .expect(400)
-      .expect((response) => {
-        expect(response.body.message).toBe(
-          'Connection URL does not match the source kind.',
-        );
-      });
+      .expect(400);
+
+    expect(adapter.inspect).not.toHaveBeenCalled();
   });
 
   it('rejects an SQL query sent to a MongoDB source', async () => {
@@ -252,9 +269,7 @@ describe('Data sources (e2e)', () => {
       })
       .expect(400);
 
-    expect(response.body.message).toEqual(
-      expect.arrayContaining([expect.stringContaining('extra')]),
-    );
+    expect(JSON.stringify(response.body)).toContain('extra');
   });
 
   it.each(['catalog', 'query'])(

@@ -29,14 +29,13 @@
     "@nestjs/core": "^12.0.1",
     "@nestjs/observe": "^0.1.8",
     "@nestjs/platform-express": "^12.0.1",
-    "class-transformer": "^0.5.1",
-    "class-validator": "^0.15.1",
     "mongodb": "^7.6.0",
     "openai": "^7.8.0",
     "pg": "^8.23.0",
     "pg-cursor": "^2.22.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",

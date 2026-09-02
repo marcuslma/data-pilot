@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { StandardSchemaValidationPipe } from '@nestjs/common';
 import {
   AppModule,
   isObserveEnabled,
@@ -11,13 +11,7 @@ async function bootstrap() {
     AppModule,
     isObserveEnabled ? { instrument: ObserveInstrument } : {},
   );
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
+  app.useGlobalPipes(new StandardSchemaValidationPipe());
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();
