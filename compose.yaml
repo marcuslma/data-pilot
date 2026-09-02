@@ -1,0 +1,44 @@
+name: data-pilot
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: pokemon
+      POSTGRES_USER: data_pilot
+      POSTGRES_PASSWORD: data_pilot
+    ports:
+      - '5433:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U data_pilot -d pokemon']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mongodb:
+    image: mongo:7.0.40
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: starwars
+    ports:
+      - '27018:27017'
+    volumes:
+      - mongodb-data:/data/db
+      - ./docker/mongodb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'mongosh --quiet --username root --password root --authenticationDatabase admin --eval "db.adminCommand({ ping: 1 }).ok"',
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+  mongodb-data:

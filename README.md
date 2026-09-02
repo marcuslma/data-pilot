@@ -57,6 +57,86 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+## Local test databases
+
+Docker Desktop (or Docker Engine with Compose) is required. The local stack
+starts PostgreSQL on port `5433` and MongoDB on port `27018`, avoiding the
+usual local ports `5432` and `27017`.
+
+```bash
+# Start and seed both databases the first time their named volumes are created.
+docker compose up -d
+docker compose ps
+
+# Follow database logs.
+docker compose logs -f postgres mongodb
+
+# Stop containers while preserving all local data.
+docker compose down
+
+# Destructive: delete both named volumes. The next start seeds them again.
+docker compose down -v
+```
+
+PostgreSQL is seeded with Kanto, eleven Kanto locations, all 151 Generation I
+Pokémon, and their original Generation I types. MongoDB is seeded with 44
+named characters and seven planetary bodies from the original Star Wars
+trilogy (Episodes IV–VI).
+
+These development-only credentials are intentionally local and must not be
+used outside this Compose stack:
+
+```bash
+export POSTGRES_CONNECTION_URL='postgresql://data_pilot:data_pilot@localhost:5433/pokemon'
+export MONGODB_CONNECTION_URL='mongodb://data_pilot:data_pilot@localhost:27018/starwars?authSource=starwars'
+export API_BASE_URL='http://localhost:3000'
+```
+
+## Test database API
+
+The test database API is available only when `NODE_ENV` is exactly `development` or `test`.
+Connections are short-lived and their sources, credentials, and metadata are not persisted.
+Use only test or read-only database accounts, and keep connection details in environment
+variables rather than committing them to source control.
+
+Start the API in development mode:
+
+```bash
+NODE_ENV=development npm run start:dev
+```
+
+List the catalog for a temporary source:
+
+```bash
+curl -X POST "${API_BASE_URL}/catalog" \
+  -H 'Content-Type: application/json' \
+  -d '{"source":{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"}}'
+```
+
+Run one read-only PostgreSQL query against the Kanto seed:
+
+```bash
+curl -X POST "${API_BASE_URL}/query" \
+  -H 'Content-Type: application/json' \
+  -d '{"source":{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"},"query":{"language":"sql","text":"SELECT p.name, string_agg(pt.type_name, '\''/'\'' ORDER BY pt.slot) AS types FROM pokemon p JOIN pokemon_types pt ON pt.pokemon_id = p.pokedex_number WHERE p.name = '\''Charizard'\'' GROUP BY p.name"}}'
+```
+
+List the MongoDB catalog:
+
+```bash
+curl -X POST "${API_BASE_URL}/catalog" \
+  -H 'Content-Type: application/json' \
+  -d '{"source":{"kind":"mongodb","connectionUrl":"'"${MONGODB_CONNECTION_URL}"'"}}'
+```
+
+Run one MongoDB `find` query against the original-trilogy seed:
+
+```bash
+curl -X POST "${API_BASE_URL}/query" \
+  -H 'Content-Type: application/json' \
+  -d '{"source":{"kind":"mongodb","connectionUrl":"'"${MONGODB_CONNECTION_URL}"'"},"query":{"language":"mongo","operation":"find","collection":"planets","filter":{"episodes":"V"},"sort":{"name":1}}}'
+```
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
