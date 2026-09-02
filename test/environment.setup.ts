@@ -1,0 +1,11 @@
+process.env.NODE_ENV = 'test';
+process.env.OPENAI_API_KEY = 'test-openai-api-key';
+process.env.PORT = '3000';
+process.env.OPENAI_MODEL = 'gpt-5-nano';
+process.env.OPENAI_REASONING_EFFORT = 'medium';
+process.env.MAX_ASK_SOURCES = '10';
+process.env.MAX_ASK_SUMMARY_ROWS_PER_EXECUTION = '100';
+process.env.MAX_ASK_SUMMARY_CONTENT_CHARS = '50000';
+process.env.OBSERVE_APP_KEY = '';
+process.env.OBSERVE_APP_SECRET = '';
+process.env.OBSERVE_SERVICE_ID = '';

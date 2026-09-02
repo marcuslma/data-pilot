@@ -92,6 +92,34 @@ export MONGODB_CONNECTION_URL='mongodb://data_pilot:data_pilot@localhost:27018/s
 export API_BASE_URL='http://localhost:3000'
 ```
 
+## Application configuration
+
+Copy `.env.example` to an untracked `.env` file and set a real OpenAI key before
+starting the API. Configuration is validated during application startup; the
+process does not listen for HTTP requests when a required value is absent or
+invalid.
+
+```bash
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY to a real key.
+```
+
+`NODE_ENV` is required and accepts `development`, `test`, or `production`.
+`PORT` is optional and defaults to `3000`; it must be an integer from `1` to
+`65535`. `OPENAI_API_KEY` is required and must not be blank. `OPENAI_MODEL`
+defaults to `gpt-5-nano`, `OPENAI_REASONING_EFFORT` defaults to `medium`, and
+the three `MAX_ASK_*` limits default to `10`, `100`, and `50000` respectively.
+
+NestJS Observe is optional, but `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` must
+be configured together. Supplying only one is a startup error. When both are
+absent, telemetry remains disabled; `OBSERVE_SERVICE_ID` defaults to
+`data-pilot`.
+
+The API currently enables open CORS globally during this development phase: any
+browser origin may make requests, while credentialed CORS requests remain
+disabled. Replace this with an explicit origin allowlist before exposing
+authenticated or sensitive operations.
+
 ## Test database API
 
 The test database API is available only when `NODE_ENV` is exactly `development` or `test`.
@@ -102,7 +130,7 @@ variables rather than committing them to source control.
 Start the API in development mode:
 
 ```bash
-NODE_ENV=development npm run start:dev
+npm run start:dev
 ```
 
 List the catalog for a temporary source:
@@ -145,10 +173,12 @@ uses OpenAI to create at most one read-only query per supplied source. The
 application inspects the catalog first and reuses the PostgreSQL and MongoDB
 query validation performed by `/query` before executing anything.
 
-Set `OPENAI_API_KEY` before calling the endpoint. `OPENAI_MODEL` is optional
-and defaults to `gpt-5-nano`; `/ask` responds with `503 Service Unavailable`
-only when the API key is unavailable. `OPENAI_REASONING_EFFORT` is optional and
-defaults to `medium`. OpenAI requests can incur usage charges.
+`OPENAI_API_KEY` is required when the application starts, not only when calling
+this endpoint. A missing or invalid key prevents startup, so `/ask` no longer
+has a request-time `503 Service Unavailable` fallback for absent configuration.
+`OPENAI_MODEL` is optional and defaults to `gpt-5-nano`;
+`OPENAI_REASONING_EFFORT` is optional and defaults to `medium`. OpenAI requests
+can incur usage charges.
 
 ```bash
 export OPENAI_API_KEY='your-api-key'

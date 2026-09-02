@@ -2,7 +2,9 @@ import { getObserveConfiguration } from './observe.config.js';
 
 describe('getObserveConfiguration', () => {
   it('disables observability when credentials are missing', () => {
-    expect(getObserveConfiguration({})).toEqual({ enabled: false });
+    expect(
+      getObserveConfiguration({ OBSERVE_SERVICE_ID: 'data-pilot' }),
+    ).toEqual({ enabled: false });
   });
 
   it('enables observability only when both credentials are configured', () => {

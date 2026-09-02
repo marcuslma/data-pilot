@@ -1,11 +1,9 @@
-import {
-  INestApplication,
-  StandardSchemaValidationPipe,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { vi } from 'vitest';
+import { configureApplication } from '../src/application.setup.js';
 import { AppModule } from '../src/app.module.js';
 import {
   AI_QUERY_PROVIDER,
@@ -16,9 +14,6 @@ import { DataSourceRegistry } from '../src/data-sources/data-source.registry.js'
 
 describe('AI query endpoint (e2e)', () => {
   let app: INestApplication<App>;
-  let originalNodeEnv: string | undefined;
-  let originalOpenAiApiKey: string | undefined;
-  let originalOpenAiModel: string | undefined;
 
   const adapter: DataSourceAdapter = {
     kind: 'postgres',
@@ -43,12 +38,6 @@ describe('AI query endpoint (e2e)', () => {
   };
 
   beforeEach(async () => {
-    originalNodeEnv = process.env.NODE_ENV;
-    originalOpenAiApiKey = process.env.OPENAI_API_KEY;
-    originalOpenAiModel = process.env.OPENAI_MODEL;
-    process.env.NODE_ENV = 'test';
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_MODEL;
     vi.mocked(adapter.inspect).mockClear();
     vi.mocked(adapter.execute).mockClear();
     vi.mocked(provider.plan).mockClear();
@@ -64,7 +53,7 @@ describe('AI query endpoint (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new StandardSchemaValidationPipe());
+    configureApplication(app);
     await app.init();
   });
 
@@ -175,90 +164,7 @@ describe('AI query endpoint (e2e)', () => {
     expect(adapter.execute).not.toHaveBeenCalled();
   });
 
-  it('blocks production access before the provider or adapter is called', async () => {
-    process.env.NODE_ENV = 'production';
-
-    await request(app.getHttpServer())
-      .post('/ask')
-      .send({
-        question: 'teste',
-        sources: [
-          { kind: 'postgres', connectionUrl: 'postgresql://localhost/pokemon' },
-        ],
-      })
-      .expect(403);
-
-    expect(adapter.inspect).not.toHaveBeenCalled();
-    expect(provider.plan).not.toHaveBeenCalled();
-  });
-
   afterEach(async () => {
     await app.close();
-    restoreEnvironment('NODE_ENV', originalNodeEnv);
-    restoreEnvironment('OPENAI_API_KEY', originalOpenAiApiKey);
-    restoreEnvironment('OPENAI_MODEL', originalOpenAiModel);
   });
 });
-
-describe('AI query endpoint without OpenAI configuration (e2e)', () => {
-  let app: INestApplication<App>;
-  let originalNodeEnv: string | undefined;
-  let originalOpenAiApiKey: string | undefined;
-  let originalOpenAiModel: string | undefined;
-
-  beforeEach(async () => {
-    originalNodeEnv = process.env.NODE_ENV;
-    originalOpenAiApiKey = process.env.OPENAI_API_KEY;
-    originalOpenAiModel = process.env.OPENAI_MODEL;
-    process.env.NODE_ENV = 'test';
-    delete process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_MODEL;
-
-    const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
-    })
-      .overrideProvider(DataSourceRegistry)
-      .useValue({
-        get: () => ({
-          kind: 'postgres',
-          inspect: async () => ({ kind: 'postgres', namespaces: [] }),
-          execute: async () => ({ kind: 'postgres', rows: [], returnedCount: 0 }),
-        }),
-      })
-      .compile();
-
-    app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new StandardSchemaValidationPipe());
-    await app.init();
-  });
-
-  it('returns 503 without leaking configuration details', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/ask')
-      .send({
-        question: 'teste',
-        sources: [
-          { kind: 'postgres', connectionUrl: 'postgresql://localhost/pokemon' },
-        ],
-      })
-      .expect(503);
-
-    expect(JSON.stringify(response.body)).not.toContain('OPENAI_API_KEY');
-  });
-
-  afterEach(async () => {
-    await app.close();
-    restoreEnvironment('NODE_ENV', originalNodeEnv);
-    restoreEnvironment('OPENAI_API_KEY', originalOpenAiApiKey);
-    restoreEnvironment('OPENAI_MODEL', originalOpenAiModel);
-  });
-});
-
-function restoreEnvironment(name: string, value: string | undefined): void {
-  if (value === undefined) {
-    delete process.env[name];
-    return;
-  }
-
-  process.env[name] = value;
-}

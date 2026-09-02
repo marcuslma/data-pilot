@@ -45,7 +45,7 @@ export interface AskConfiguration {
   maxSources: number;
   maxSummaryRowsPerExecution: number;
   maxSummaryContentChars: number;
-  openAi?: OpenAiConfiguration;
+  openAi: OpenAiConfiguration;
 }
 
 export type AskSourceOutcome =

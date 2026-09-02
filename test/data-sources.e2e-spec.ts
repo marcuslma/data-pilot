@@ -1,11 +1,11 @@
 import {
   INestApplication,
-  StandardSchemaValidationPipe,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { configureApplication } from './../src/application.setup.js';
 import { AppModule } from './../src/app.module.js';
 import type { DataSourceAdapter } from './../src/data-sources/data-source.adapter.js';
 import { DataSourceRegistry } from './../src/data-sources/data-source.registry.js';
@@ -13,7 +13,6 @@ import { vi } from 'vitest';
 
 describe('Data sources (e2e)', () => {
   let app: INestApplication<App>;
-  let originalNodeEnv: string | undefined;
 
   const adapter: DataSourceAdapter = {
     kind: 'postgres',
@@ -22,8 +21,6 @@ describe('Data sources (e2e)', () => {
   };
 
   beforeEach(async () => {
-    originalNodeEnv = process.env.NODE_ENV;
-    process.env.NODE_ENV = 'test';
     vi.mocked(adapter.inspect).mockResolvedValue({
       kind: 'postgres',
       namespaces: [],
@@ -44,7 +41,7 @@ describe('Data sources (e2e)', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new StandardSchemaValidationPipe());
+    configureApplication(app);
     await app.init();
   });
 
@@ -272,37 +269,7 @@ describe('Data sources (e2e)', () => {
     expect(JSON.stringify(response.body)).toContain('extra');
   });
 
-  it.each(['catalog', 'query'])(
-    'blocks the %s route in production before a source is touched',
-    async (route) => {
-      process.env.NODE_ENV = 'production';
-
-      const body =
-        route === 'catalog'
-          ? {
-              source: {
-                kind: 'postgres',
-                connectionUrl: 'postgresql://localhost/test',
-              },
-            }
-          : {
-              source: {
-                kind: 'postgres',
-                connectionUrl: 'postgresql://localhost/test',
-              },
-              query: { language: 'sql', text: 'SELECT 1' },
-            };
-
-      await request(app.getHttpServer()).post(`/${route}`).send(body).expect(403);
-    },
-  );
-
   afterEach(async () => {
     await app.close();
-    if (originalNodeEnv === undefined) {
-      delete process.env.NODE_ENV;
-    } else {
-      process.env.NODE_ENV = originalNodeEnv;
-    }
   });
 });

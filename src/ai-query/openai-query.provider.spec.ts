@@ -1,7 +1,5 @@
-import { ServiceUnavailableException } from '@nestjs/common';
 import { vi } from 'vitest';
 import { OpenAiQueryProvider } from './openai-query.provider.js';
-import { UnconfiguredAiQueryProvider } from './unconfigured-ai-query.provider.js';
 
 describe('OpenAiQueryProvider', () => {
   it('uses strict structured output without storing a planning response', async () => {
@@ -136,15 +134,5 @@ describe('OpenAiQueryProvider', () => {
 
     await expect(operation).rejects.toThrow('AI provider request failed.');
     await expect(operation).rejects.not.toThrow('secret detail');
-  });
-});
-
-describe('UnconfiguredAiQueryProvider', () => {
-  it('returns a generic 503 error when OpenAI is not configured', async () => {
-    const provider = new UnconfiguredAiQueryProvider();
-
-    await expect(provider.plan({ question: 'teste', sources: [] })).rejects.toThrow(
-      new ServiceUnavailableException('AI query provider is not configured.'),
-    );
   });
 });
