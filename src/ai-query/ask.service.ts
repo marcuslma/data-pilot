@@ -185,23 +185,17 @@ export class AskService {
 
       return {
         ...source,
-        query: this.parsePlannedQuery(source.source.kind, planned),
+        query: this.parsePlannedQuery(source.source.kind, planned.query),
       };
     });
   }
 
   private parsePlannedQuery(
     kind: DataSourceKind,
-    planned: PlannedQuery,
+    query: object,
   ): NativeQuery {
     try {
-      const parsed: unknown = JSON.parse(planned.nativeQueryJson);
-
-      if (!isPlainObject(parsed)) {
-        throw invalidPlanException();
-      }
-
-      return this.dataSourceService.validateNativeQuery(kind, parsed);
+      return this.dataSourceService.validateNativeQuery(kind, query);
     } catch {
       throw invalidPlanException();
     }
@@ -307,9 +301,9 @@ function isQueryPlan(value: unknown): value is QueryPlan {
 function isPlannedQuery(value: unknown): value is PlannedQuery {
   return (
     isPlainObject(value) &&
-    hasOnlyKeys(value, ['sourceId', 'nativeQueryJson']) &&
+    hasOnlyKeys(value, ['sourceId', 'query']) &&
     typeof value.sourceId === 'string' &&
-    typeof value.nativeQueryJson === 'string'
+    isPlainObject(value.query)
   );
 }
 

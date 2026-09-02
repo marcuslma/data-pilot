@@ -11,7 +11,7 @@ export const ASK_CONFIGURATION = Symbol('ASK_CONFIGURATION');
 
 export interface PlannedQuery {
   sourceId: string;
-  nativeQueryJson: string;
+  query: NativeQuery;
 }
 
 export interface QueryPlan {

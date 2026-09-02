@@ -160,7 +160,10 @@ function isMongoQuery(query: Record<string, unknown>): query is Extract<
     isOptionalPlainObject(query.filter) &&
     isOptionalPlainObject(query.projection) &&
     isOptionalSort(query.sort) &&
-    (query.limit === undefined || typeof query.limit === 'number') &&
+    (query.limit === undefined ||
+      (typeof query.limit === 'number' &&
+        Number.isInteger(query.limit) &&
+        query.limit > 0)) &&
     isOptionalPipeline(query.pipeline)
   );
 }

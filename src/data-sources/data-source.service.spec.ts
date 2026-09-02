@@ -48,6 +48,21 @@ describe('DataSourceService native-query validation', () => {
     expect(registry.get).not.toHaveBeenCalled();
   });
 
+  it.each([0, -1, 1.5])(
+    'rejects a MongoDB query with an invalid limit of %s',
+    (limit) => {
+      expect(() =>
+        service.validateNativeQuery('mongodb', {
+          language: 'mongo',
+          operation: 'find',
+          collection: 'orders',
+          limit,
+        }),
+      ).toThrow(new BadRequestException('Invalid native query.'));
+      expect(registry.get).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects a source whose protocol does not match its kind', () => {
     expect(() =>
       service.validateSource({

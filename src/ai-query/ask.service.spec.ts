@@ -62,7 +62,7 @@ describe('AskService', () => {
       queries: [
         {
           sourceId: 'source_1',
-          nativeQueryJson: JSON.stringify(postgresQuery),
+          query: postgresQuery,
         },
       ],
       unavailableReason: '',
@@ -110,12 +110,36 @@ describe('AskService', () => {
     expect(JSON.stringify(response)).not.toContain('postgresql://');
   });
 
+  it('executes a structured planned query without parsing JSON text', async () => {
+    provider.plan.mockResolvedValueOnce({
+      queries: [{ sourceId: 'source_1', query: postgresQuery }],
+      unavailableReason: '',
+    });
+
+    const response = await createService().ask(validRequest());
+
+    expect(response).toEqual({
+      answer: 'Há 151 Pokémon em Kanto.',
+      executions: [
+        {
+          sourceId: 'source_1',
+          kind: 'postgres',
+          stage: 'execute',
+          status: 'succeeded',
+          query: postgresQuery,
+          result: defaultResult,
+          truncatedForSummary: false,
+        },
+      ],
+    });
+  });
+
   it('rejects an unknown planned source before executing any query', async () => {
     provider.plan.mockResolvedValue({
       queries: [
         {
           sourceId: 'source_404',
-          nativeQueryJson: JSON.stringify(postgresQuery),
+          query: postgresQuery,
         },
       ],
       unavailableReason: '',
@@ -160,11 +184,11 @@ describe('AskService', () => {
       queries: [
         {
           sourceId: 'source_1',
-          nativeQueryJson: JSON.stringify(postgresQuery),
+          query: postgresQuery,
         },
         {
           sourceId: 'source_1',
-          nativeQueryJson: JSON.stringify(postgresQuery),
+          query: postgresQuery,
         },
       ],
       unavailableReason: '',

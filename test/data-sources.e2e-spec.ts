@@ -254,6 +254,32 @@ describe('Data sources (e2e)', () => {
       });
   });
 
+  it.each([0, -1, 1.5])(
+    'rejects a MongoDB query with an invalid limit of %s',
+    async (limit) => {
+      await request(app.getHttpServer())
+        .post('/query')
+        .send({
+          source: {
+            kind: 'mongodb',
+            connectionUrl: 'mongodb://localhost/test',
+          },
+          query: {
+            language: 'mongo',
+            operation: 'find',
+            collection: 'orders',
+            limit,
+          },
+        })
+        .expect(400)
+        .expect((response) => {
+          expect(response.body.message).toBe('Invalid native query.');
+        });
+
+      expect(adapter.execute).not.toHaveBeenCalled();
+    },
+  );
+
   it('rejects unexpected body properties through the production validation pipe', async () => {
     const response = await request(app.getHttpServer())
       .post('/catalog')

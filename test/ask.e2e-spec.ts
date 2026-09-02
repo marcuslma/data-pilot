@@ -29,7 +29,7 @@ describe('AI query endpoint (e2e)', () => {
       queries: [
         {
           sourceId: 'source_1',
-          nativeQueryJson: '{"language":"sql","text":"SELECT 151 AS total"}',
+          query: { language: 'sql', text: 'SELECT 151 AS total' } as const,
         },
       ],
       unavailableReason: '',
@@ -140,7 +140,7 @@ describe('AI query endpoint (e2e)', () => {
       queries: [
         {
           sourceId: 'source_1',
-          nativeQueryJson: '{"language":"sql","text":"SELECT 1; SELECT 2"}',
+          query: { language: 'sql', text: 'SELECT 1; SELECT 2' } as const,
         },
       ],
       unavailableReason: '',

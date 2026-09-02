@@ -2,13 +2,13 @@ import { vi } from 'vitest';
 import { OpenAiQueryProvider } from './openai-query.provider.js';
 
 describe('OpenAiQueryProvider', () => {
-  it('uses strict structured output without storing a planning response', async () => {
+  it('returns a structured SQL planned query from a structured model response', async () => {
     const create = vi.fn(async () => ({
       output_text: JSON.stringify({
         queries: [
           {
             sourceId: 'source_1',
-            nativeQueryJson: '{"language":"sql","text":"SELECT 1"}',
+            query: { language: 'sql', text: 'SELECT 1' },
           },
         ],
         unavailableReason: '',
@@ -35,7 +35,7 @@ describe('OpenAiQueryProvider', () => {
       queries: [
         {
           sourceId: 'source_1',
-          nativeQueryJson: '{"language":"sql","text":"SELECT 1"}',
+          query: { language: 'sql', text: 'SELECT 1' },
         },
       ],
       unavailableReason: '',
@@ -50,6 +50,27 @@ describe('OpenAiQueryProvider', () => {
           format: expect.objectContaining({
             type: 'json_schema',
             strict: true,
+            schema: expect.objectContaining({
+              properties: expect.objectContaining({
+                queries: expect.objectContaining({
+                  items: expect.objectContaining({
+                    properties: expect.objectContaining({
+                      sourceId: expect.objectContaining({
+                        enum: ['source_1'],
+                      }),
+                      query: expect.objectContaining({
+                        properties: expect.objectContaining({
+                          language: expect.objectContaining({
+                            enum: ['sql'],
+                          }),
+                          text: { type: 'string' },
+                        }),
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            }),
           }),
         }),
       }),
@@ -88,6 +109,104 @@ describe('OpenAiQueryProvider', () => {
         store: false,
       }),
     );
+  });
+
+  it('parses JSON fields from a structured MongoDB planned query', async () => {
+    const create = vi.fn(async () => ({
+      output_text: JSON.stringify({
+        queries: [
+          {
+            sourceId: 'source_1',
+            query: {
+              language: 'mongo',
+              operation: 'find',
+              collection: 'planets',
+              filterJson: '{"episodes":"V"}',
+              projectionJson: '{}',
+              sortJson: '{"name":1}',
+              limit: null,
+              pipelineJson: '[]',
+            },
+          },
+        ],
+        unavailableReason: '',
+      }),
+    }));
+    const provider = new OpenAiQueryProvider(
+      { responses: { create } } as never,
+      'gpt-5-nano',
+      'medium',
+    );
+
+    await expect(
+      provider.plan({
+        question: 'Quais planetas aparecem no Episódio V?',
+        sources: [
+          {
+            sourceId: 'source_1',
+            kind: 'mongodb',
+            catalog: { kind: 'mongodb', namespaces: [] },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      queries: [
+        {
+          sourceId: 'source_1',
+          query: {
+            language: 'mongo',
+            operation: 'find',
+            collection: 'planets',
+            filter: { episodes: 'V' },
+            projection: {},
+            sort: { name: 1 },
+            pipeline: [],
+          },
+        },
+      ],
+      unavailableReason: '',
+    });
+  });
+
+  it('rejects an invalid MongoDB sort direction from a model response', async () => {
+    const create = vi.fn(async () => ({
+      output_text: JSON.stringify({
+        queries: [
+          {
+            sourceId: 'source_1',
+            query: {
+              language: 'mongo',
+              operation: 'find',
+              collection: 'planets',
+              filterJson: '{}',
+              projectionJson: '{}',
+              sortJson: '{"name":2}',
+              limit: null,
+              pipelineJson: '[]',
+            },
+          },
+        ],
+        unavailableReason: '',
+      }),
+    }));
+    const provider = new OpenAiQueryProvider(
+      { responses: { create } } as never,
+      'gpt-5-nano',
+      'medium',
+    );
+
+    await expect(
+      provider.plan({
+        question: 'Liste os planetas.',
+        sources: [
+          {
+            sourceId: 'source_1',
+            kind: 'mongodb',
+            catalog: { kind: 'mongodb', namespaces: [] },
+          },
+        ],
+      }),
+    ).rejects.toThrow('AI provider returned an invalid response.');
   });
 
   it('forbids planned queries when no catalog is supplied', async () => {
