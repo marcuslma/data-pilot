@@ -77,6 +77,59 @@ describe('OpenAiQueryProvider', () => {
     );
   });
 
+  it('sends the complete tolerant PostgreSQL text-matching policy to the query planner', async () => {
+    const create = vi.fn(async () => ({
+      output_text: JSON.stringify({
+        queries: [
+          {
+            sourceId: 'source_1',
+            query: { language: 'sql', text: 'SELECT 1' },
+          },
+        ],
+        unavailableReason: '',
+      }),
+    }));
+    const provider = new OpenAiQueryProvider(
+      { responses: { create } } as never,
+      'gpt-5-nano',
+      'medium',
+    );
+
+    await provider.plan({
+      question: 'Qual o número do poskémon pikachu, mewtwo e charizard?',
+      sources: [
+        {
+          sourceId: 'source_1',
+          kind: 'postgres',
+          catalog: { kind: 'postgres', namespaces: [] },
+        },
+      ],
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringMatching(
+          /use ILIKE with '%' wildcards instead\s+of case-sensitive = or IN comparisons/s,
+        ),
+      }),
+    );
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringMatching(
+          /fallback fragment for each requested value\s+with OR or ILIKE ANY/s,
+        ),
+      }),
+    );
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringMatching(
+          /Do not use optional PostgreSQL extensions or functions such\s+as pg_trgm, similarity, levenshtein, or unaccent/s,
+        ),
+      }),
+    );
+  });
+
   it('returns a Portuguese answer from a structured synthesis response', async () => {
     const create = vi.fn(async () => ({
       output_text: JSON.stringify({ answer: 'Há 151 Pokémon em Kanto.' }),
