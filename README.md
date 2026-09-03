@@ -212,6 +212,34 @@ curl -X POST "${API_BASE_URL}/ask" \
   -d '{"question":"Quantos Pokémon existem em Kanto?","sources":[{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"}]}'
 ```
 
+## Relationship suggestions API
+
+`POST /relationship-suggestions` is available only when `NODE_ENV` is exactly
+`development` or `test`. It inspects two or more temporary sources and returns
+ranked, explainable candidate relationships between fields. Profiling uses
+bounded samples locally; raw values and fingerprints are not returned, and
+the suggestions are not persisted.
+
+```bash
+curl -X POST "${API_BASE_URL}/relationship-suggestions" \
+  -H 'Content-Type: application/json' \
+  -d '{"sources":[{"sourceId":"pokemon","source":{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"}},{"sourceId":"characters","source":{"kind":"mongodb","connectionUrl":"'"${MONGODB_CONNECTION_URL}"'"}}]}'
+```
+
+After reviewing or correcting the candidates, validate the mapping with
+`POST /relationships/validate`. The route re-inspects the sources and accepts
+only endpoints and type families that exist in the current catalogs.
+
+```bash
+curl -X POST "${API_BASE_URL}/relationships/validate" \
+  -H 'Content-Type: application/json' \
+  -d '{"sources":[{"sourceId":"crm","source":{"kind":"postgres","connectionUrl":"'"${POSTGRES_CONNECTION_URL}"'"}},{"sourceId":"billing","source":{"kind":"mongodb","connectionUrl":"'"${MONGODB_CONNECTION_URL}"'"}}],"relationships":[{"left":{"sourceId":"crm","namespace":"public","entity":"customers","field":"id"},"right":{"sourceId":"billing","namespace":"billing","entity":"orders","field":"customer_id"},"operator":"equals","cardinality":"one-to-many","joinType":"left"}]}'
+```
+
+Validated mappings are not persisted and are not consumed by `/ask` yet. Cross-
+source query execution will use this source-independent contract in a later
+phase.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.

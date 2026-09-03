@@ -1,4 +1,7 @@
-import { BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { vi } from 'vitest';
 import { DataSourceRegistry } from './data-source.registry.js';
 import { DataSourceService } from './data-source.service.js';
@@ -73,5 +76,47 @@ describe('DataSourceService native-query validation', () => {
       new BadRequestException('Connection URL does not match the source kind.'),
     );
     expect(registry.get).not.toHaveBeenCalled();
+  });
+
+  it('delegates detailed inspection only after source validation', async () => {
+    const detailed = {
+      catalog: { kind: 'postgres' as const, namespaces: [] },
+      fieldProfiles: [],
+    };
+    const adapter = {
+      inspectDetailed: vi.fn(async () => detailed),
+    };
+    vi.mocked(registry.get).mockReturnValue(adapter as never);
+
+    await expect(
+      service.inspectDetailed({
+        kind: 'postgres',
+        connectionUrl: 'postgresql://localhost/test',
+      }),
+    ).resolves.toEqual(detailed);
+
+    expect(registry.get).toHaveBeenCalledWith('postgres');
+    expect(adapter.inspectDetailed).toHaveBeenCalledWith({
+      kind: 'postgres',
+      connectionUrl: 'postgresql://localhost/test',
+    });
+  });
+
+  it('hides detailed adapter access errors', async () => {
+    const adapter = {
+      inspectDetailed: vi.fn(async () => {
+        throw new UnprocessableEntityException('private secret');
+      }),
+    };
+    vi.mocked(registry.get).mockReturnValue(adapter as never);
+
+    await expect(
+      service.inspectDetailed({
+        kind: 'postgres',
+        connectionUrl: 'postgresql://localhost/test',
+      }),
+    ).rejects.toThrow(
+      new UnprocessableEntityException('Unable to access the PostgreSQL source.'),
+    );
   });
 });

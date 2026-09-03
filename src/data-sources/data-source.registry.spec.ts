@@ -7,11 +7,19 @@ describe('DataSourceRegistry', () => {
   const postgresAdapter: DataSourceAdapter = {
     kind: 'postgres',
     inspect: async () => ({ kind: 'postgres', namespaces: [] }),
+    inspectDetailed: async () => ({
+      catalog: { kind: 'postgres', namespaces: [] },
+      fieldProfiles: [],
+    }),
     execute: async () => ({ kind: 'postgres', rows: [], returnedCount: 0 }),
   };
   const mongodbAdapter: DataSourceAdapter = {
     kind: 'mongodb',
     inspect: async () => ({ kind: 'mongodb', namespaces: [] }),
+    inspectDetailed: async () => ({
+      catalog: { kind: 'mongodb', namespaces: [] },
+      fieldProfiles: [],
+    }),
     execute: async () => ({ kind: 'mongodb', rows: [], returnedCount: 0 }),
   };
 

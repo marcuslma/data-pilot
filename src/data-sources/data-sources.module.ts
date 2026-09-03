@@ -48,6 +48,6 @@ const mongoDbClientFactory: MongoDbClientFactory = (connectionUrl) =>
     DataSourceService,
     RuntimeAccessGuard,
   ],
-  exports: [DataSourceService],
+  exports: [DataSourceService, RuntimeAccessGuard],
 })
 export class DataSourcesModule {}

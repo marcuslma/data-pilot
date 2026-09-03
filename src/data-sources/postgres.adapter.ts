@@ -1,14 +1,25 @@
-import { BadRequestException, Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { Client } from 'pg';
 import Cursor from 'pg-cursor';
 import type { DataSourceAdapter } from './data-source.adapter.js';
 import type {
   DataSourceCatalog,
+  DataSourceFieldProfile,
+  DetailedDataSourceInspection,
   NativeQuery,
   QueryResult,
   SourceDefinition,
 } from './data-source.types.js';
 import { hasMultipleSqlStatements } from './sql-statement.js';
+import {
+  profileDocumentFields,
+  profileTypeFamilies,
+} from './value-profiling.js';
 
 export const POSTGRES_CLIENT_FACTORY = Symbol('POSTGRES_CLIENT_FACTORY');
 
@@ -22,6 +33,7 @@ interface ColumnRow {
   table_name: string;
   column_name: string;
   data_type: string;
+  is_nullable?: string;
 }
 
 interface DatabaseRow {
@@ -41,6 +53,20 @@ interface IndexRow {
   index_name: string;
 }
 
+interface UniqueColumnRow {
+  schema_name: string;
+  table_name: string;
+  column_name: string;
+  constraint_name: string;
+}
+
+interface CatalogMetadata {
+  database: string;
+  columns: ColumnRow[];
+  primaryKeys: PrimaryKeyRow[];
+  indexes: IndexRow[];
+}
+
 @Injectable()
 export class PostgresAdapter implements DataSourceAdapter {
   readonly kind = 'postgres' as const;
@@ -56,24 +82,57 @@ export class PostgresAdapter implements DataSourceAdapter {
     try {
       client = this.clientFactory(source.connectionUrl);
       await client.connect();
-      const database = await client.query<DatabaseRow>(
-        'SELECT current_database() AS database_name',
-      );
-      const columns = await client.query<ColumnRow>(COLUMNS_QUERY);
-      const primaryKeys = await client.query<PrimaryKeyRow>(PRIMARY_KEYS_QUERY);
-      const indexes = await client.query<IndexRow>(INDEXES_QUERY);
-      const databaseName = database.rows[0]?.database_name;
-
-      if (!databaseName) {
-        throw new Error('PostgreSQL did not return the connected database.');
-      }
+      const metadata = await this.readCatalogMetadata(client);
 
       return this.buildCatalog(
-        databaseName,
-        columns.rows,
-        primaryKeys.rows,
-        indexes.rows,
+        metadata.database,
+        metadata.columns,
+        metadata.primaryKeys,
+        metadata.indexes,
       );
+    } catch {
+      throw new UnprocessableEntityException(
+        'Unable to access the PostgreSQL source.',
+      );
+    } finally {
+      if (client) {
+        await this.endClient(client);
+      }
+    }
+  }
+
+  async inspectDetailed(
+    source: SourceDefinition,
+  ): Promise<DetailedDataSourceInspection> {
+    let client: Client | undefined;
+
+    try {
+      client = this.clientFactory(source.connectionUrl);
+      await client.connect();
+      const metadata = await this.readCatalogMetadata(client);
+      const uniqueColumns = await client.query<UniqueColumnRow>(
+        UNIQUE_COLUMNS_QUERY,
+      );
+
+      await client.query('BEGIN READ ONLY');
+      await client.query("SET LOCAL statement_timeout = '10s'");
+      const fieldProfiles = await this.profileColumns(
+        client,
+        metadata.columns,
+        metadata.primaryKeys,
+        uniqueColumns.rows,
+      );
+      await client.query('COMMIT');
+
+      return {
+        catalog: this.buildCatalog(
+          metadata.database,
+          metadata.columns,
+          metadata.primaryKeys,
+          metadata.indexes,
+        ),
+        fieldProfiles,
+      };
     } catch {
       throw new UnprocessableEntityException(
         'Unable to access the PostgreSQL source.',
@@ -141,6 +200,112 @@ export class PostgresAdapter implements DataSourceAdapter {
     } catch {
       // Ending an already failed connection must not expose a driver error.
     }
+  }
+
+  private async readCatalogMetadata(client: Client): Promise<CatalogMetadata> {
+    const database = await client.query<DatabaseRow>(
+      'SELECT current_database() AS database_name',
+    );
+    const columns = await client.query<ColumnRow>(COLUMNS_QUERY);
+    const primaryKeys = await client.query<PrimaryKeyRow>(PRIMARY_KEYS_QUERY);
+    const indexes = await client.query<IndexRow>(INDEXES_QUERY);
+    const databaseName = database.rows[0]?.database_name;
+
+    if (!databaseName) {
+      throw new Error('PostgreSQL did not return the connected database.');
+    }
+
+    return {
+      database: databaseName,
+      columns: columns.rows,
+      primaryKeys: primaryKeys.rows,
+      indexes: indexes.rows,
+    };
+  }
+
+  private async profileColumns(
+    client: Client,
+    columns: ColumnRow[],
+    primaryKeys: PrimaryKeyRow[],
+    uniqueColumns: UniqueColumnRow[],
+  ): Promise<DataSourceFieldProfile[]> {
+    const columnsByTable = new Map<string, ColumnRow[]>();
+
+    columns.forEach((column) => {
+      if (!isProfileEligibleType(column.data_type)) {
+        return;
+      }
+
+      const tableKey = tableKeyFor(column.schema_name, column.table_name);
+      const tableColumns = columnsByTable.get(tableKey) ?? [];
+      tableColumns.push(column);
+      columnsByTable.set(tableKey, tableColumns);
+    });
+
+    const primaryKeyFields = new Set(
+      primaryKeys.map((key) =>
+        fieldKeyFor(key.schema_name, key.table_name, key.column_name),
+      ),
+    );
+    const uniqueFields = new Set(
+      uniqueColumns.map((key) =>
+        fieldKeyFor(key.schema_name, key.table_name, key.column_name),
+      ),
+    );
+    const profiles: DataSourceFieldProfile[] = [];
+
+    for (const tableColumns of columnsByTable.values()) {
+      const firstColumn = tableColumns[0];
+      if (!firstColumn) {
+        continue;
+      }
+
+      const selectList = tableColumns
+        .map((column) => quoteIdentifier(column.column_name))
+        .join(', ');
+      const sampleQuery = `SELECT ${selectList} FROM ${quoteIdentifier(
+        firstColumn.schema_name,
+      )}.${quoteIdentifier(firstColumn.table_name)} LIMIT ${SAMPLE_SIZE}`;
+      const sample = await client.query<Record<string, unknown>>(sampleQuery);
+      const documentProfiles = profileDocumentFields(sample.rows);
+
+      tableColumns.forEach((column) => {
+        const documentProfile = documentProfiles.find(
+          ({ path }) => path === column.column_name,
+        );
+        const valueFingerprints = documentProfile?.valueFingerprints ?? [];
+        const sampledValueCount = documentProfile?.sampledValueCount ?? 0;
+
+        profiles.push({
+          namespace: column.schema_name,
+          entity: column.table_name,
+          path: column.column_name,
+          types: [column.data_type],
+          typeFamilies: profileTypeFamilies([column.data_type]),
+          primaryKey: primaryKeyFields.has(
+            fieldKeyFor(
+              column.schema_name,
+              column.table_name,
+              column.column_name,
+            ),
+          ),
+          unique: uniqueFields.has(
+            fieldKeyFor(
+              column.schema_name,
+              column.table_name,
+              column.column_name,
+            ),
+          ),
+          nullable:
+            column.is_nullable !== 'NO' || Boolean(documentProfile?.nullable),
+          valueFingerprints,
+          sampledValueCount,
+          distinctSampleCount: valueFingerprints.length,
+        });
+      });
+    }
+
+    return profiles.sort(compareProfiles);
   }
 
   private buildCatalog(
@@ -223,10 +388,21 @@ export class PostgresAdapter implements DataSourceAdapter {
 }
 
 const COLUMNS_QUERY = `
-  SELECT table_schema AS schema_name, table_name, column_name, data_type
+  SELECT table_schema AS schema_name, table_name, column_name, data_type, is_nullable
   FROM information_schema.columns
   WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
   ORDER BY table_schema, table_name, ordinal_position
+`;
+
+const UNIQUE_COLUMNS_QUERY = `
+  SELECT tc.table_schema AS schema_name, tc.table_name, kcu.column_name, tc.constraint_name
+  FROM information_schema.table_constraints AS tc
+  JOIN information_schema.key_column_usage AS kcu
+    ON tc.constraint_name = kcu.constraint_name
+    AND tc.table_schema = kcu.table_schema
+    AND tc.table_name = kcu.table_name
+  WHERE tc.constraint_type = 'UNIQUE'
+  ORDER BY tc.table_schema, tc.table_name, tc.constraint_name, kcu.ordinal_position
 `;
 
 const PRIMARY_KEYS_QUERY = `
@@ -246,3 +422,46 @@ const INDEXES_QUERY = `
   WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
   ORDER BY schemaname, tablename, indexname
 `;
+
+const SAMPLE_SIZE = 100;
+
+function isProfileEligibleType(dataType: string): boolean {
+  return [
+    'boolean',
+    'smallint',
+    'integer',
+    'bigint',
+    'decimal',
+    'numeric',
+    'real',
+    'double precision',
+    'uuid',
+    'text',
+    'character varying',
+    'character',
+    'date',
+    'timestamp without time zone',
+    'timestamp with time zone',
+  ].includes(dataType.toLowerCase());
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function tableKeyFor(schema: string, table: string): string {
+  return `${schema}\u0000${table}`;
+}
+
+function fieldKeyFor(schema: string, table: string, field: string): string {
+  return `${tableKeyFor(schema, table)}\u0000${field}`;
+}
+
+function compareProfiles(
+  left: DataSourceFieldProfile,
+  right: DataSourceFieldProfile,
+): number {
+  return [left.namespace, left.entity, left.path].join('\u0000').localeCompare(
+    [right.namespace, right.entity, right.path].join('\u0000'),
+  );
+}

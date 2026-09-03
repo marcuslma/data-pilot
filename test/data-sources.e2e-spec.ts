@@ -17,6 +17,10 @@ describe('Data sources (e2e)', () => {
   const adapter: DataSourceAdapter = {
     kind: 'postgres',
     inspect: vi.fn(async () => ({ kind: 'postgres', namespaces: [] })),
+    inspectDetailed: vi.fn(async () => ({
+      catalog: { kind: 'postgres', namespaces: [] },
+      fieldProfiles: [],
+    })),
     execute: vi.fn(async () => ({ kind: 'postgres', rows: [], returnedCount: 0 })),
   };
 

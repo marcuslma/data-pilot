@@ -182,6 +182,159 @@ describe('PostgresAdapter', () => {
     expect(client.release).not.toHaveBeenCalled();
   });
 
+  it('profiles eligible scalar columns during detailed inspection without returning sampled values', async () => {
+    const client = createFakeClient((query) => {
+      if (typeof query !== 'string') {
+        return undefined;
+      }
+
+      if (query.includes('current_database()')) {
+        return { rows: [{ database_name: 'analytics' }] };
+      }
+
+      if (query.includes('information_schema.columns')) {
+        return {
+          rows: [
+            {
+              schema_name: 'public',
+              table_name: 'customers',
+              column_name: 'id',
+              data_type: 'uuid',
+              is_nullable: 'NO',
+            },
+            {
+              schema_name: 'public',
+              table_name: 'customers',
+              column_name: 'email',
+              data_type: 'text',
+              is_nullable: 'YES',
+            },
+          ],
+        };
+      }
+
+      if (query.includes('constraint_type = \'PRIMARY KEY\'')) {
+        return {
+          rows: [
+            {
+              schema_name: 'public',
+              table_name: 'customers',
+              column_name: 'id',
+              constraint_name: 'customers_pkey',
+            },
+          ],
+        };
+      }
+
+      if (query.includes('constraint_type = \'UNIQUE\'')) {
+        return {
+          rows: [
+            {
+              schema_name: 'public',
+              table_name: 'customers',
+              column_name: 'email',
+              constraint_name: 'customers_email_key',
+            },
+          ],
+        };
+      }
+
+      if (query.includes('FROM "public"."customers"')) {
+        return { rows: [{ id: 'customer-1', email: 'secret@example.com' }] };
+      }
+
+      return { rows: [] };
+    });
+    const adapter = new PostgresAdapter(
+      vi.fn(() => asClient(client)) as PostgresClientFactory,
+    );
+
+    const result = await adapter.inspectDetailed({
+      kind: 'postgres',
+      connectionUrl: 'postgres://example',
+    });
+
+    expect(result.catalog).toEqual(
+      expect.objectContaining({ kind: 'postgres', database: 'analytics' }),
+    );
+    expect(result.fieldProfiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          namespace: 'public',
+          entity: 'customers',
+          path: 'id',
+          primaryKey: true,
+          valueFingerprints: expect.any(Array),
+        }),
+        expect.objectContaining({
+          namespace: 'public',
+          entity: 'customers',
+          path: 'email',
+          unique: true,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain('secret@example.com');
+    expect(
+      client.query.mock.calls.some(
+        ([query]) =>
+          typeof query === 'string' &&
+          query.includes('FROM "public"."customers"') &&
+          query.includes('LIMIT 100'),
+      ),
+    ).toBe(true);
+    expect(client.query).toHaveBeenCalledWith('BEGIN READ ONLY');
+    expect(client.query).toHaveBeenCalledWith(
+      "SET LOCAL statement_timeout = '10s'",
+    );
+    expect(client.query).toHaveBeenLastCalledWith('COMMIT');
+    expect(client.end).toHaveBeenCalledOnce();
+  });
+
+  it('does not sample a PostgreSQL table without eligible scalar columns', async () => {
+    const client = createFakeClient((query) => {
+      if (typeof query !== 'string') {
+        return undefined;
+      }
+
+      if (query.includes('current_database()')) {
+        return { rows: [{ database_name: 'analytics' }] };
+      }
+
+      if (query.includes('information_schema.columns')) {
+        return {
+          rows: [
+            {
+              schema_name: 'public',
+              table_name: 'events',
+              column_name: 'payload',
+              data_type: 'jsonb',
+              is_nullable: 'YES',
+            },
+          ],
+        };
+      }
+
+      return { rows: [] };
+    });
+    const adapter = new PostgresAdapter(
+      vi.fn(() => asClient(client)) as PostgresClientFactory,
+    );
+
+    const result = await adapter.inspectDetailed({
+      kind: 'postgres',
+      connectionUrl: 'postgres://example',
+    });
+
+    expect(result.catalog.namespaces[0]?.entities[0]?.name).toBe('events');
+    expect(
+      client.query.mock.calls.some(
+        ([query]) =>
+          typeof query === 'string' && query.includes('FROM "public"."events"'),
+      ),
+    ).toBe(false);
+  });
+
   it('hides PostgreSQL driver failures and ends the client', async () => {
     const client = createFakeClient();
     client.query.mockRejectedValueOnce(new Error('database credentials leaked'));

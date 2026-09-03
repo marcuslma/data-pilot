@@ -9,6 +9,7 @@ import { hasMultipleSqlStatements } from './sql-statement.js';
 import type {
   DataSourceCatalog,
   DataSourceKind,
+  DetailedDataSourceInspection,
   NativeQuery,
   QueryResult,
   SourceDefinition,
@@ -31,6 +32,18 @@ export class DataSourceService {
 
     try {
       return await this.registry.get(definition.kind).inspect(definition);
+    } catch (error) {
+      this.rethrowAccessError(error, definition.kind);
+    }
+  }
+
+  async inspectDetailed(source: Source): Promise<DetailedDataSourceInspection> {
+    const definition = this.validateSource(source);
+
+    try {
+      return await this.registry
+        .get(definition.kind)
+        .inspectDetailed(definition);
     } catch (error) {
       this.rethrowAccessError(error, definition.kind);
     }

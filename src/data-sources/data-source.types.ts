@@ -1,5 +1,13 @@
 export type DataSourceKind = 'postgres' | 'mongodb';
 
+export type ProfileTypeFamily =
+  | 'number'
+  | 'text'
+  | 'boolean'
+  | 'date'
+  | 'identifier'
+  | 'unknown';
+
 export interface SourceDefinition {
   kind: DataSourceKind;
   connectionUrl: string;
@@ -30,6 +38,25 @@ export interface DataSourceCatalog {
     name: string;
     entities: CatalogEntity[];
   }>;
+}
+
+export interface DataSourceFieldProfile {
+  namespace: string;
+  entity: string;
+  path: string;
+  types: string[];
+  typeFamilies: ProfileTypeFamily[];
+  primaryKey: boolean;
+  unique: boolean;
+  nullable: boolean;
+  valueFingerprints: string[];
+  sampledValueCount: number;
+  distinctSampleCount: number;
+}
+
+export interface DetailedDataSourceInspection {
+  catalog: DataSourceCatalog;
+  fieldProfiles: DataSourceFieldProfile[];
 }
 
 export type NativeQuery =

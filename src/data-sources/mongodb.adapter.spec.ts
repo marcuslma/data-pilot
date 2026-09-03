@@ -62,7 +62,13 @@ function createFakeClient(): {
     ),
     find: vi.fn(() => findCursor),
     listIndexes: vi.fn(() => ({
-      toArray: vi.fn(async () => [{ name: 'orders_customer_idx' }]),
+      toArray: vi.fn(async () => [
+        {
+          name: 'orders_customer_idx',
+          key: { 'customer.id': 1 },
+          unique: true,
+        },
+      ]),
     })),
   };
   const db: FakeDb = {
@@ -125,6 +131,43 @@ describe('MongoDbAdapter', () => {
       ],
     });
 
+    expect(fake.collection.aggregate).toHaveBeenCalledWith(
+      [{ $sample: { size: 100 } }],
+      { maxTimeMS: 10_000 },
+    );
+    expect(fake.client.close).toHaveBeenCalledOnce();
+  });
+
+  it('profiles sampled fields during detailed inspection without returning documents', async () => {
+    const fake = createFakeClient();
+    fake.sampleCursor.toArray.mockResolvedValue([
+      { customer: { id: 'C-1' }, total: 18 },
+      { customer: { id: 'C-2' }, total: 21 },
+    ]);
+    const adapter = new MongoDbAdapter(
+      vi.fn(() => asMongoClient(fake.client)) as MongoDbClientFactory,
+    );
+
+    const result = await adapter.inspectDetailed({
+      kind: 'mongodb',
+      connectionUrl: 'mongodb://example',
+    });
+
+    expect(result.catalog).toEqual(
+      expect.objectContaining({ kind: 'mongodb' }),
+    );
+    expect(result.fieldProfiles).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          namespace: 'analytics',
+          entity: 'orders',
+          path: 'customer.id',
+          valueFingerprints: expect.any(Array),
+          unique: true,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain('C-1');
     expect(fake.collection.aggregate).toHaveBeenCalledWith(
       [{ $sample: { size: 100 } }],
       { maxTimeMS: 10_000 },

@@ -14,6 +14,8 @@ import {
 import type { DataSourceAdapter } from './data-source.adapter.js';
 import type {
   DataSourceCatalog,
+  DataSourceFieldProfile,
+  DetailedDataSourceInspection,
   NativeQuery,
   QueryResult,
   SourceDefinition,
@@ -22,6 +24,10 @@ import {
   assertSafeMongoQuery,
   inferDocumentFields,
 } from './mongo-query-validation.js';
+import {
+  profileDocumentFields,
+  toDataSourceFieldProfile,
+} from './value-profiling.js';
 
 type MongoQuery = Extract<NativeQuery, { language: 'mongo' }>;
 
@@ -36,6 +42,13 @@ const MAX_DOCUMENTS = 1_000;
 const MAX_TIME_MS = 10_000;
 const SAMPLE_SIZE = 100;
 
+interface InspectedCollection {
+  name: string;
+  indexes: string[];
+  fieldProfiles: DataSourceFieldProfile[];
+  fields: ReturnType<typeof inferDocumentFields>;
+}
+
 @Injectable()
 export class MongoDbAdapter implements DataSourceAdapter {
   readonly kind = 'mongodb' as const;
@@ -46,6 +59,13 @@ export class MongoDbAdapter implements DataSourceAdapter {
   ) {}
 
   async inspect(source: SourceDefinition): Promise<DataSourceCatalog> {
+    const detailed = await this.inspectDetailed(source);
+    return detailed.catalog;
+  }
+
+  async inspectDetailed(
+    source: SourceDefinition,
+  ): Promise<DetailedDataSourceInspection> {
     let client: MongoClient | undefined;
 
     try {
@@ -53,40 +73,28 @@ export class MongoDbAdapter implements DataSourceAdapter {
       await client.connect();
       const database = client.db();
       const collections = await database.listCollections().toArray();
-      const entities = await Promise.all(
-        collections.map(async ({ name }) => {
-          const collection = database.collection<Record<string, unknown>>(name);
-          const [indexes, documents] = await Promise.all([
-            collection.listIndexes().toArray(),
-            collection
-              .aggregate<Record<string, unknown>>(
-                [{ $sample: { size: SAMPLE_SIZE } }],
-                { maxTimeMS: MAX_TIME_MS },
-              )
-              .toArray(),
-          ]);
-
-          return {
-            name,
-            fields: inferDocumentFields(documents),
-            indexes: indexes
-              .map((index) => index.name)
-              .filter((name): name is string => typeof name === 'string')
-              .sort(),
-          };
-        }),
+      const inspectedCollections = await Promise.all(
+        collections.map(({ name }) =>
+          this.inspectCollection(database, name),
+        ),
       );
+      const entities = inspectedCollections
+        .map(({ name, fields, indexes }) => ({ name, fields, indexes }))
+        .sort((left, right) => left.name.localeCompare(right.name));
 
       return {
-        kind: 'mongodb',
-        namespaces: [
-          {
-            name: database.databaseName,
-            entities: entities.sort((left, right) =>
-              left.name.localeCompare(right.name),
-            ),
-          },
-        ],
+        catalog: {
+          kind: 'mongodb',
+          namespaces: [
+            {
+              name: database.databaseName,
+              entities,
+            },
+          ],
+        },
+        fieldProfiles: inspectedCollections
+          .flatMap(({ fieldProfiles }) => fieldProfiles)
+          .sort(compareProfiles),
       };
     } catch {
       throw new UnprocessableEntityException(
@@ -97,6 +105,47 @@ export class MongoDbAdapter implements DataSourceAdapter {
         await this.closeClient(client);
       }
     }
+  }
+
+  private async inspectCollection(
+    database: ReturnType<MongoClient['db']>,
+    name: string,
+  ): Promise<InspectedCollection> {
+    const collection = database.collection<Record<string, unknown>>(name);
+    const [indexes, documents] = await Promise.all([
+      collection.listIndexes().toArray(),
+      collection
+        .aggregate<Record<string, unknown>>(
+          [{ $sample: { size: SAMPLE_SIZE } }],
+          { maxTimeMS: MAX_TIME_MS },
+        )
+        .toArray(),
+    ]);
+    const uniquePaths = new Set(
+      indexes
+        .filter((index) => index.unique === true && index.key)
+        .flatMap((index) => Object.keys(index.key ?? {})),
+    );
+    const fieldProfiles = profileDocumentFields(documents).map((profile) =>
+      toDataSourceFieldProfile(
+        profile,
+        { namespace: database.databaseName, entity: name },
+        {
+          primaryKey: profile.path === '_id',
+          unique: profile.path === '_id' || uniquePaths.has(profile.path),
+        },
+      ),
+    );
+
+    return {
+      name,
+      fields: inferDocumentFields(documents),
+      indexes: indexes
+        .map((index) => index.name)
+        .filter((indexName): indexName is string => typeof indexName === 'string')
+        .sort(),
+      fieldProfiles,
+    };
   }
 
   async execute(
@@ -183,4 +232,13 @@ export class MongoDbAdapter implements DataSourceAdapter {
       // Closing a failed MongoDB client must not expose driver details.
     }
   }
+}
+
+function compareProfiles(
+  left: DataSourceFieldProfile,
+  right: DataSourceFieldProfile,
+): number {
+  return [left.namespace, left.entity, left.path].join('\u0000').localeCompare(
+    [right.namespace, right.entity, right.path].join('\u0000'),
+  );
 }

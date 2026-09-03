@@ -9,6 +9,7 @@ import {
 } from './config/application-configuration.js';
 import { DataSourcesModule } from './data-sources/data-sources.module.js';
 import { getObserveConfiguration } from './observe.config.js';
+import { RelationshipMappingModule } from './relationship-mapping/relationship-mapping.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 const observeConfiguration = getObserveConfiguration(bootstrapConfiguration);
@@ -21,8 +22,14 @@ export const isObserveEnabled = observeConfiguration.enabled;
         ObserveModule.forRoot(observeConfiguration.options),
         DataSourcesModule,
         AiQueryModule,
+        RelationshipMappingModule,
       ]
-    : [applicationConfigurationModule, DataSourcesModule, AiQueryModule],
+    : [
+        applicationConfigurationModule,
+        DataSourcesModule,
+        AiQueryModule,
+        RelationshipMappingModule,
+      ],
   controllers: [AppController],
   providers: [AppService],
 })
